@@ -12,7 +12,7 @@
 | 프로젝트명 | RAG 기반 AI 용어 & 트렌드 검색 서비스 |
 | 기술 스택 | Pinecone · LangChain · Gemini API · FastAPI · Vanilla JS · RAGAS |
 | 작업 경로 | `/Users/malee/Claude/Output/RAGproject/` |
-| 계획서 | `_md/rag_ai_search_plan.md` |
+| 계획서 | `rag_ai_search_plan.md` |
 | 시작일 | 2026-05-09 |
 
 ---
@@ -49,7 +49,7 @@ Claude Code에 제공할 Project Plan 문서 제작 요청
 - `rag_ai_search_plan.md` 계획서 작성 (6개 섹션: 개요/환경설정/파이프라인/RAG/API·UI/RAGAS)
 
 **산출물**
-- `/Users/malee/Claude/Output/RAGproject/_md/rag_ai_search_plan.md`
+- `/Users/malee/Claude/Output/RAGproject/rag_ai_search_plan.md`
 
 ---
 
@@ -60,7 +60,7 @@ claude/output/RAGproject 를 만들고 그 폴더로 md 파일 이동해줘
 
 **작업 내역**
 - `/Users/malee/Claude/Output/RAGproject/` 폴더 생성
-- `_md/` 하위 폴더 생성
+- `` 하위 폴더 생성
 - `rag_ai_search_plan.md` 이동
 
 ---
@@ -76,7 +76,7 @@ claude/output/RAGproject 를 만들고 그 폴더로 md 파일 이동해줘
 **현재 폴더 구조**
 ```
 RAGproject/
-├── _md/
+├── 
 │   ├── rag_ai_search_plan.md
 │   └── projectlog.md          ← 현재 파일
 └── data/
@@ -280,6 +280,145 @@ gemini-3-flash-preview 모델인지 확인해 줘 / 업데이트 해 줘
 
 ---
 
-## 다음 작업 (Phase 2 — 데이터 파이프라인)
+---
 
-PDF 파일을 `data/raw/` 폴더에 넣은 후 파이프라인 실행
+### [2026-05-09] Phase 2 — 데이터 파이프라인 실행
+
+**프롬프트 12**
+```
+파일 준비 되어 있어
+```
+
+**작업 내역**
+- `src/pipeline/{loader,chunker,indexer}.py` 작성
+- `scripts/run_pipeline.py` 작성 (배치 50개, 분당 한도 65초 sleep)
+- PDF 7개 / 458페이지 / 1066 청크 생성
+
+**산출물**
+- `src/pipeline/loader.py`, `chunker.py`, `indexer.py`
+- `scripts/run_pipeline.py`
+
+---
+
+### [2026-05-09] 인덱싱 1차 — 분당 한도 에러
+
+**작업 내역**
+- 첫 실행에서 분당 100회 한도 초과로 [100/1066] 단계에서 실패
+- `indexer.py`에 65초 배치 간 대기 + 재시도 로직 추가
+
+---
+
+### [2026-05-09] 인덱싱 2차 — 일일 한도 도달
+
+**프롬프트 13**
+```
+이 상태인데, 내가 잠시 자리를 비우는 동안 절전상태가 되었거든...
+```
+
+**작업 내역**
+- 800/1066까지 정상 업로드, 850 batch에서 분당 한도 → 3회 재시도 모두 실패
+- 추가 시도에서 일일 한도(1000회) 초과 확인
+- Pinecone에 950개 레코드 업로드 완료 (중복 일부 포함)
+- `caffeinate -s` 사용 권고 (절전 방지)
+
+**의사결정**
+- 옵션 B 선택: 그대로 두고 내일 남은 ~116개만 추가 (중복 잔존 허용)
+- `scripts/resume_pipeline.py` 작성 (START_INDEX=800부터 이어서 실행)
+
+---
+
+### [2026-05-09] Phase 3·4 — RAG + FastAPI + 웹 UI
+
+**프롬프트 14**
+```
+로컬서버를 실행해
+```
+
+**작업 내역**
+- `src/rag/retriever.py`, `generator.py` 작성
+- `src/api/main.py`, `schemas.py` (FastAPI: `/search`, `/health`, `/`, `/static`)
+- `frontend/index.html`, `style.css`, `app.js`
+- `uvicorn` 백그라운드 실행 → http://localhost:8000 접속 OK
+- (이후 Rate Limit Cooldown UI 추가됨: 429 응답 시 카운트다운 + 검색 버튼 비활성화)
+
+---
+
+### [2026-05-09] Phase 5 — 품질 검증
+
+**프롬프트 15**
+```
+품질검증해 줘
+```
+
+**작업 내역 / 이슈**
+1. RAGAS 0.2.6 자동 평가 시도 → langchain-google-genai 2.x와 호환 이슈로 NaN
+   - `temperature` kwarg가 gRPC 비동기 호출에 직접 전달되어 TypeError
+2. LLM-as-Judge 수동 평가로 전환 (`src/eval/manual_eval.py`)
+3. Gemini 무료 한도 다중 발동:
+   - LLM: gemini-2.5-flash 분당 5회
+   - Embedding: gemini-embedding-001 일일 1000회 (이미 인덱싱에서 소진)
+4. **Claude로 평가 교체 결정**
+   - 옵션 1(Anthropic API 결제) vs 옵션 2(Claude Code 대화창 직접 평가) 중 옵션 2 채택
+5. `src/eval/collect_eval_data.py` 작성 → 데이터만 수집해 JSON 저장
+6. Q3만 retrieval 성공 → Claude(이 대화창)가 직접 채점
+   - F=0.95 / AR=0.90 / CP=0.80 / CR=0.60
+   - 종합 0.8125 (3/4 PASS, Context Recall 0.10 미달)
+
+**산출물**
+- `src/eval/{test_set,manual_eval,collect_eval_data,ragas_eval}.py`
+- `output/eval_data.json`, `output/eval_result.json`
+
+---
+
+### [2026-05-09] 산출물 문서화
+
+**프롬프트 16**
+```
+시스템 아키텍처는 머메이드로 그려줘 / 평가가 완료되면 산출물 생성·최신화 해 줘
+```
+
+**작업 내역**
+- `rag_ai_search_plan.md` → `rag_project_plan.md` 파일명 변경
+- `ARCHITECTURE.md` 신규 (Mermaid 다이어그램 4종 + 컴포넌트 매트릭스 + 의존성 표 + 제약사항 mindmap)
+- `ragas_evaluation_report.md` 신규 (RAGAS 호환 이슈 + LLM-as-Judge 우회 + Q3 상세 채점)
+- `.claude/skills/evaluate-rag/SKILL.md` 신규 (프로젝트 전용 RAG 평가 skill)
+- `rag_eval_agent_report.md` 신규 (skill 실행 결과 리포트)
+
+---
+
+### [2026-05-09] GitHub 저장소 push
+
+**프롬프트 17**
+```
+https://github.com/trotoys/RAGproject 에 푸쉬해 줘
+```
+
+**작업 내역**
+- `git init -b main`
+- `.gitignore` 검증 (`.env`, `venv/`, `data/raw/` 모두 제외 확인)
+- 초기 커밋 (33 파일)
+- `origin` 등록 후 `git push -u origin main` → 성공
+
+**저장소**: https://github.com/trotoys/RAGproject
+
+---
+
+## Phase 진행 현황
+
+| Phase | 내용 | 상태 |
+|-------|------|------|
+| Phase 0 | 폴더 구조·계획서·로그 | ✅ 완료 |
+| Phase 1 | 환경 설정·Pinecone 인덱스 | ✅ 완료 |
+| Phase 2 | 데이터 파이프라인 | ⚠ 부분 (950/1066 업로드, 한도 리셋 후 116개 추가 예정) |
+| Phase 3 | RAG 검색 | ✅ 완료 |
+| Phase 4 | API + 웹 UI | ✅ 완료 (Cooldown UI 포함) |
+| Phase 5 | 품질 검증 | ⚠ 부분 (Q3 정상, Q1·Q2 한도로 미평가) |
+
+---
+
+## 다음 작업 후보
+
+- 일일 한도 리셋 후 Q1·Q2 재평가 + 인덱싱 116개 추가 (`resume_pipeline.py`)
+- `top_k=8`, `chunk_size=1000` 등 Recall 개선 실험
+- 테스트셋 N ≥ 10 확장
+- Anthropic API 결제 후 `manual_eval.py`(Claude judge) 자동화

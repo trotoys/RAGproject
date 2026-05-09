@@ -14,8 +14,17 @@ def create_index():
 
     existing = [idx.name for idx in pc.list_indexes()]
     if INDEX_NAME in existing:
-        print(f"[INFO] 인덱스 '{INDEX_NAME}' 이미 존재합니다.")
-        return
+        # 기존 인덱스의 metric이 dotproduct가 아니면 삭제 후 재생성
+        # (하이브리드 검색은 dotproduct 필수)
+        desc = pc.describe_index(INDEX_NAME)
+        current_metric = desc.metric
+        if current_metric == "dotproduct":
+            print(f"[INFO] 인덱스 '{INDEX_NAME}' 이미 존재 (metric=dotproduct). 유지.")
+            return
+        print(f"[REBUILD] 기존 metric={current_metric} → dotproduct 필요. 삭제 후 재생성.")
+        pc.delete_index(INDEX_NAME)
+        import time
+        time.sleep(5)  # 삭제 반영 대기
 
     pc.create_index(
         name=INDEX_NAME,

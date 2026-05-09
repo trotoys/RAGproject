@@ -1,0 +1,28 @@
+# Core
+langchain==0.3.13
+langchain-google-genai==2.0.8
+langchain-pinecone==0.2.13
+langchain-community==0.3.13
+
+# Vector DB
+pinecone-client==4.1.2
+
+# LLM / Embedding
+google-generativeai==0.8.3
+
+# Backend
+fastapi==0.115.0
+uvicorn==0.30.6
+python-multipart==0.0.9
+
+# PDF Processing
+pypdf==4.3.1
+pdfminer.six==20231228
+
+# Evaluation
+ragas==0.2.6
+datasets==2.20.0
+
+# Utilities
+python-dotenv==1.0.1
+pydantic>=2.11.1

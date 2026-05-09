@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 용어 & 트렌드 검색</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>AI 용어 & 트렌드 검색</h1>
+      <p>PDF 문서 기반 RAG 검색 서비스</p>
+    </header>
+
+    <div class="search-box">
+      <input type="text" id="query" placeholder="AI 관련 질문을 입력하세요..." autofocus />
+      <button onclick="search()">검색</button>
+    </div>
+
+    <div id="loading" class="loading hidden">검색 중...</div>
+
+    <div id="result" class="result hidden">
+      <div class="answer-box">
+        <h3>답변</h3>
+        <div id="answer"></div>
+      </div>
+      <div class="meta">
+        <span id="sources"></span>
+        <span id="elapsed"></span>
+      </div>
+    </div>
+
+    <div id="error" class="error hidden"></div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

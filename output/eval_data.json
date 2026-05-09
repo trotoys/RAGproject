@@ -1,0 +1,50 @@
+[
+  {
+    "question": "AI 에이전트(AI Agent)란 무엇인가?",
+    "ground_truth": "AI 에이전트는 환경을 인식하고 자율적으로 의사결정하여 목표를 달성하기 위해 행동하는 시스템입니다. LLM을 두뇌로 사용하고 도구(Tools)를 활용해 작업을 수행합니다.",
+    "error": "Error embedding content: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/embed_content_free_tier_requests, limit: 1000, model: gemini-embedding-1.0\nPlease retry in 55.13391433s. [links {\n  description: \"Learn more about Gemini API quotas\"\n  url: \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n}\n, violations {\n  quota_metric: \"generativelanguage.googleapis.com/embed_content_free_tier_requests\"\n  quota_id: \"EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier\"\n  quota_dimensions {\n    key: \"model\"\n    value: \"gemini-embedding-1.0\"\n  }\n  quota_dimensions {\n    key: \"location\"\n    value: \"global\"\n  }\n  quota_value: 1000\n}\n, retry_delay {\n  seconds: 55\n}\n]"
+  },
+  {
+    "question": "RAG(Retrieval-Augmented Generation)의 작동 방식은?",
+    "ground_truth": "RAG는 외부 지식 베이스에서 관련 정보를 검색한 후, 그 정보를 컨텍스트로 활용해 LLM이 답변을 생성하는 방식입니다. 환각을 줄이고 최신 정보를 반영할 수 있습니다.",
+    "error": "Error embedding content: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/embed_content_free_tier_requests, limit: 1000, model: gemini-embedding-1.0\nPlease retry in 53.729211018s. [links {\n  description: \"Learn more about Gemini API quotas\"\n  url: \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n}\n, violations {\n  quota_metric: \"generativelanguage.googleapis.com/embed_content_free_tier_requests\"\n  quota_id: \"EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier\"\n  quota_dimensions {\n    key: \"model\"\n    value: \"gemini-embedding-1.0\"\n  }\n  quota_dimensions {\n    key: \"location\"\n    value: \"global\"\n  }\n  quota_value: 1000\n}\n, retry_delay {\n  seconds: 53\n}\n]"
+  },
+  {
+    "question": "대규모 언어 모델(LLM)의 주요 한계는 무엇인가?",
+    "ground_truth": "LLM은 학습 시점 이후 최신 정보를 알지 못하고, 환각(Hallucination) 문제가 있으며, 도메인 특화 지식이 부족할 수 있습니다.",
+    "contexts": [
+      "문장 다듬기, 카피라이팅 등 인간의 표현 능력을 확장하는 도구로 활용됩니다. LLM은 단순한 텍스트 \n생성기를 넘어 지식 접근성과 협업 효율을 높이는 핵심 플랫폼으로 자리 잡고 있습니다. LLM의 활용대규모 언어 데이터를 학습해 인간 언어를 이해하고 생성하는 AI 모델\n•  수십억 개 이상의 매개변수를 학습해 문맥·의미를 추론하며 다양한 언어 과업을 수행하는 범용 AI\n• 텍스트 기반 사고·대화·추론을 가능하게 하는 생성형 AI의 핵심 기술\nLLM은 방대한 데이터를 학습하며 언어 패턴을 일반화하지만, 그 과정에서 여러 기술적·사회적 한계를 \n드러냅니다. 학습 데이터의 불완전성과 편향으로 인해 사실과 다른 정보(환각)가 생성되거나 특정 \n문화·집단에 대한 왜곡이 발생할 수 있습니다. 또한 웹 기반 데이터에는 저작권, 개인정보, 비윤리적 \n내용이 포함될 수 있어 데이터 거버넌스와 책임 관리가 중요합니다. 이를 해결하기 위해 EU는 AI Act를 \n통해 LLM에 투명성·데이터 품질 의무를 부과하고, 주요국도 신뢰성과 안전성 확보를 위한 정책을 \n강화하고 있습니다. 사회적으로는 자동화가 언어 기반 직무를 대체하면서 노동 구조 변화와 교육 \n체계 재편이 나타나고 있으며 동시에 AI 활용 능력과 윤리 이해를 결합한 AI 리터러시가 새로운 기본 \n역량으로 요구되고 있습니다. 결국 LLM의 발전은 기술 정교화뿐 아니라 사회적 신뢰·데이터 윤리·책임 \n있는 활용 원칙 확립에 달려 있다고 할 수 있습니다. LLM의 과제  참조 용어 | 트랜스포머 아키텍처 p.80",
+      "SLM은 LLM보다 규모가 작고 목적이 명확한 \n모델입니다. LLM은 방대한 지식과 추론 능력을 \n제공하지만 높은 비용과 자원을 요구합니다. \n반면 SLM은 속도·비용·자원 효율성을 중시해 \n개인 단말이나 제한된 환경에서도 구동됩니다. \nLLM이 범용성과 창의성을 지향한다면, SLM은 \n경량성·응답성·보안성에 집중합니다. 최근에는 \n두 모델을 결합한 하이브리드 구조가 등장해, \nLLM이 지식을 제공하고 SLM이 현장 응용을 \n담당하는 방식이 확산되고 있습니다. SLM과 LLM의 비교 SLM vs LLM\n작음. 가벼움\n매개변수 ~수십억 개모델 크기매우 큼. 무거움\n매개변수 ~수조 개\n특정 분야 데이터 학습 데이터 방대한 범용 데이터\n빠름, 비용 적음,  \n융통성 낮음장단점다양한 작업 가능 \n상대적으로 느림\n모바일·에지 등\n리소스 제한된 환경운영 환경 클라우드·대규모 서버\n저비용 / 고효율 비용 구조 고비용 / 고성능\n금융, 법률 등  \n특정 분야 특화활용 생성형 AI, 코파일럿  참조 용어 | 거대 언어모델 (LLM) p.11",
+      "be dealt with by a combination of two methods.  \nOne is using smaller LLMs (the term Small  \nLanguage Models, or SMLs, is making the rounds), \nthose “tiny” sub-7B and even sub-3B parameter \nmodels. The other method is using different,  \nmore efficient architectures than the standard \ntransformer architecture; AI21’s Jamba family  \nof models is an example.\nThe second challenge is particularly acute,  \nand more challenging. The phenomenon  \nis inherent to the probabilistic nature of LLMs,  \nand it’s delusional wishful thinking that this will  \ngo away, no matter how much effort is placed  \non things like “alignment”, “guardrails”, and such.  \nI believe that we’re going to wean ourselves from  \nwhat I call our current “prompt and pray” modus",
+      "The high cost of running LLMs challenges  \nthe economics of business software. Cost01\nImagine writing an investment memo or responding  \nto a customer, and your AI is brilliant 95% of the time  \nbut produces garbage the other 5%. That is a showstopper  \nin the enterprise.LLMs produce wonderful output \nalongside utter nonsense02\n70",
+      "필수용어 AI 시대에 꼭 알아야 할 핵심 용어11003\nLarge Language Model거대 언어모델 / LLM\nLLM은 방대한 텍스트를 학습해 단어 간 패턴과 의미를 확률적으로 예측하는 언어 중심 AI 모델입니다. \n문장 내 모든 단어 간의 관계를 동시에 고려하여 각 단어의 문맥적 중요도를 계산하는 트랜스포머 \n구조의 Self-Attention 메커니즘을 활용해 문맥을 파악하고, 문장 간 의미 연결을 이해합니다. 이로써 \n문장 생성, 요약, 번역, 질의응답, 코드 작성 등 다양한 언어 작업을 수행하며, 인간의 사고 과정을 모방한 \n추론·기획형 언어 지능으로 발전중입니다. 또한 대화 맥락을 기억하고 응답의 톤이나 형식을 조정하며, \n텍스트 외에도 이미지·음성 등 멀티모달 입력을 처리하는 범용 인터페이스로 확장되고 있습니다. LLM이란?\nLLM은 인간의 언어 능력을 매개로 다양한 산업과 생활 영역에 적용됩니다. 업무 영역에서는 문서 요약, \n회의록 작성, 이메일 초안 작성 등 지식 노동의 자동화를 지원하고, 기업에서는 고객 응대, 데이터 분석, \n규정 질의응답 등에 활용해 의사결정 속도를 높이고 있습니다. 산업별로는 금융의 리스크 분석, 교육의 \n맞춤형 피드백, 공공 행정의 민원 응대 등으로 확산되고 있습니다. 또한 창작 분야에서는 스토리 구성, \n문장 다듬기, 카피라이팅 등 인간의 표현 능력을 확장하는 도구로 활용됩니다. LLM은 단순한 텍스트"
+    ],
+    "answer": "제공된 컨텍스트에 근거한 대규모 언어 모델(Large Language Model, LLM)의 주요 한계는 다음과 같습니다.\n\n**1. 정보의 신뢰성 및 기술적 한계**\n*   **환각(Hallucination):** 학습 데이터의 불완전성과 편향으로 인해 사실과 다른 정보를 생성할 수 있습니다.\n*   **확률적 특성의 내재적 문제:** LLM은 확률적 특성(Probabilistic Nature)을 지니고 있어, 뛰어난 결과물을 내놓다가도 때때로 터무니없는 내용(Utter Nonsense)이나 쓰레기 같은 정보(Garbage)를 생성합니다. 이는 정렬(Alignment)이나 가드레일(Guardrails) 설정만으로는 완전히 해결하기 어려운 고유한 문제입니다.\n*   **데이터 편향 및 왜곡:** 특정 문화나 집단에 대한 왜곡된 정보를 생성하거나 편향성을 드러낼 수 있습니다.\n\n**2. 비용 및 자원 효율성 문제**\n*   **고비용 구조(High Cost):** 모델 운영에 높은 비용이 발생하여 비즈니스 소프트웨어의 경제성에 도전 과제가 됩니다.\n*   **자원 집약적 특성:** 수조 개의 매개변수(Parameters)를 가진 무거운 모델 크기로 인해 대규모 서버나 클라우드(Cloud) 환경이 필수적이며, 많은 자원을 요구합니다.\n*   **상대적으로 느린 속도:** 모델의 규모가 크기 때문에 소형 언어 모델(Small Language Model, SLM)에 비해 응답 속도가 상대적으로 느립니다.\n\n**3. 데이터 거버넌스 및 윤리적 문제**\n*   **데이터 리스크:** 웹 기반 학습 데이터에 포함된 저작권(Copyright), 개인정보(Personal Information), 비윤리적 내용(Unethical Content)에 노출될 위험이 있습니다.\n*   **책임 및 투명성 의무:** 데이터 품질과 투명성(Transparency) 확보를 위한 엄격한 데이터 거버넌스와 책임 관리가 요구됩니다.\n\n**4. 사회적 영향 및 역량 요구**\n*   **노동 구조의 변화:** 자동화로 인해 언어 기반 직무가 대체되는 등 노동 구조의 변화와 교육 체계의 재편을 야기합니다.\n*   **새로운 역량 필요:** 기술적 활용 능력뿐만 아니라 윤리적 이해를 결합한 AI 리터러시(AI Literacy)가 새로운 기본 역량으로 요구되는 사회적 부담이 발생합니다.",
+    "sources": [
+      "google_cloud_future_of_ai_perspectives_for_startups_2025.pdf",
+      "★2025_AI_동향과_이슈로_살펴보는_AI_시대에_꼭_알아야_할_핵심용어.pdf"
+    ],
+    "metadata": [
+      {
+        "source_file": "★2025_AI_동향과_이슈로_살펴보는_AI_시대에_꼭_알아야_할_핵심용어.pdf",
+        "page": 10.0
+      },
+      {
+        "source_file": "★2025_AI_동향과_이슈로_살펴보는_AI_시대에_꼭_알아야_할_핵심용어.pdf",
+        "page": 13.0
+      },
+      {
+        "source_file": "google_cloud_future_of_ai_perspectives_for_startups_2025.pdf",
+        "page": 70.0
+      },
+      {
+        "source_file": "google_cloud_future_of_ai_perspectives_for_startups_2025.pdf",
+        "page": 70.0
+      },
+      {
+        "source_file": "★2025_AI_동향과_이슈로_살펴보는_AI_시대에_꼭_알아야_할_핵심용어.pdf",
+        "page": 10.0
+      }
+    ]
+  }
+]

@@ -1,5 +1,6 @@
 import os
 import time
+import hashlib
 from typing import List, Optional
 from dotenv import load_dotenv
 from langchain.schema import Document
@@ -11,6 +12,14 @@ load_dotenv()
 BATCH_SIZE = 50
 BATCH_SLEEP = 65   # 배치 간 대기 (무료 플랜 100req/min 한도 대응)
 MAX_RETRIES = 3
+
+
+def chunk_id(doc: Document) -> str:
+    """콘텐츠 기반 결정론적 ID. 같은 청크 → 같은 ID → upsert로 중복 방지."""
+    src = doc.metadata.get("source_file", "")
+    page = doc.metadata.get("page", -1)
+    key = f"{src}|{page}|{doc.page_content}"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
 def get_embeddings():
@@ -27,15 +36,17 @@ def _upload_batch(
     vectorstore: Optional[PineconeVectorStore],
     retry: int = 0,
 ) -> PineconeVectorStore:
+    ids = [chunk_id(d) for d in batch]
     try:
         if vectorstore is None:
             return PineconeVectorStore.from_documents(
                 documents=batch,
                 embedding=embeddings,
                 index_name=index_name,
+                ids=ids,
             )
         else:
-            vectorstore.add_documents(batch)
+            vectorstore.add_documents(batch, ids=ids)
             return vectorstore
     except Exception as e:
         if "429" in str(e) and retry < MAX_RETRIES:

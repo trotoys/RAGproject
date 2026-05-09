@@ -20,10 +20,10 @@ def create_index():
     pc.create_index(
         name=INDEX_NAME,
         dimension=DIMENSION,
-        metric="cosine",
+        metric="dotproduct",  # 하이브리드 검색(dense + sparse)을 위해 dotproduct 필수
         spec=ServerlessSpec(cloud="aws", region=ENVIRONMENT),
     )
-    print(f"[SUCCESS] 인덱스 '{INDEX_NAME}' 생성 완료 (dim={DIMENSION}, metric=cosine)")
+    print(f"[SUCCESS] 인덱스 '{INDEX_NAME}' 생성 완료 (dim={DIMENSION}, metric=dotproduct)")
 
 if __name__ == "__main__":
     create_index()

@@ -13,6 +13,9 @@ venv/
 data/raw/
 data/pdfs/
 
+# BM25 인코더 (코퍼스에서 재생성 가능)
+output/bm25_encoder.pkl
+
 # IDE
 .DS_Store
 .vscode/

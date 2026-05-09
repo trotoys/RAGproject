@@ -4,6 +4,10 @@
 Pinecone + Gemini API + LangChain + FastAPI + Vanilla JS로 PDF 문서 기반 AI 용어/트렌드 검색 서비스 구현.
 웹 브라우저에서 질문을 입력하면 관련 내용을 찾아 한국어로 답변. RAGAS로 검색 품질 평가.
 
+## 진행 단계
+- **Phase 1 — Dense MVP** (완료): cosine + Gemini Embedding 단일 검색
+- **Phase 2 — Hybrid Search** (현재): dotproduct 인덱스 + BM25 sparse 결합 (§7 참조)
+
 ---
 
 ## 1. 개요 / 기술 스택 / 디렉토리
@@ -762,3 +766,193 @@ python src/eval/ragas_eval.py
 | Answer Relevancy | 답변이 질문에 얼마나 관련 있는가 | ≥ 0.8 |
 | Context Precision | 검색 결과 중 실제 관련 청크 비율 | ≥ 0.7 |
 | Context Recall | 정답에 필요한 정보를 검색에서 얼마나 찾았는가 | ≥ 0.7 |
+
+---
+
+## 7. 하이브리드 검색 (Phase 2)
+
+### 7-1. 동기
+
+Dense embedding 만으로는 다음 질의에서 약점이 드러남:
+
+- **고유 명사·약어**: "RAGAS", "BM25", "DSPy" 같이 의미 학습이 부족한 토큰 — sparse(BM25)가 정확 매치로 보완
+- **숫자·코드 식별자**: "GPT-4o", "Gemini 2.5" 등 — sparse가 우세
+- **드문 도메인 용어**: 임베딩 공간에서 가까운 이웃이 빈약한 경우
+
+→ Dense (의미 유사도) + Sparse (어휘 정확 매치)를 가중 결합하는 hybrid search로 전환.
+
+### 7-2. 아키텍처 변경 사항
+
+```
+Phase 1 (Dense Only)                    Phase 2 (Hybrid)
+─────────────────────                   ──────────────────────────────
+PDF                                     PDF
+ ↓                                       ↓
+Chunks                                  Chunks
+ ↓                                       ↓ ───────────────┐
+Gemini Embedding                        Gemini Embedding   BM25 Encoder
+ ↓                                       ↓                  ↓
+Pinecone (cosine)                       Pinecone (dotproduct, dense + sparse)
+ ↓                                       ↓
+similarity_search                       hybrid_query(α·dense, (1−α)·sparse)
+```
+
+### 7-3. 구성 요소
+
+| 구성 | 도구/모델 |
+|---|---|
+| Dense 임베딩 | `gemini-embedding-001` (3072d) |
+| Sparse 인코더 | `pinecone-text` BM25Encoder (코퍼스 fit, pickle 직렬화) |
+| Pinecone 인덱스 | `dotproduct` 메트릭 — sparse 지원 필수 |
+| 가중치 | `HYBRID_ALPHA` (기본 `0.7` = dense 70% + sparse 30%) |
+
+### 7-4. 가중 결합 수식
+
+쿼리 시 두 벡터에 각각 스칼라 가중치를 곱한 뒤 단일 hybrid query로 보낸다 (Pinecone 권장 방식):
+
+```
+scaled_dense  = dense  × α
+scaled_sparse = sparse × (1 − α)
+score = ⟨q_dense, d_dense⟩ × α  +  ⟨q_sparse, d_sparse⟩ × (1 − α)
+```
+
+엣지 케이스:
+- `α = 1.0` → dense-only (Phase 1과 동등)
+- `α = 0.0` → BM25-only
+- 일반적으로 `0.6 ~ 0.8` 구간에서 잘 동작 (도메인 의존)
+
+### 7-5. 신규 의존성 (requirements.txt)
+
+```
+pinecone-text==0.9.0    # BM25 sparse encoder
+```
+
+`pinecone-text`는 NLTK punkt 토크나이저를 자동 다운로드. 한국어는 띄어쓰기(어절) 단위로 토큰화되며,
+영어·약어·숫자 매칭에서 가장 큰 효과를 본다.
+
+### 7-6. 환경변수 추가 (.env.example)
+
+```env
+# Hybrid Search
+HYBRID_ALPHA=0.7
+BM25_PATH=output/bm25_encoder.pkl
+```
+
+### 7-7. 인덱스 메트릭 변경 (`scripts/create_index.py`)
+
+```python
+pc.create_index(
+    name=INDEX_NAME,
+    dimension=DIMENSION,        # 3072 (gemini-embedding-001)
+    metric="dotproduct",        # ← Phase 1의 "cosine"에서 변경. sparse 동시 저장 시 필수
+    spec=ServerlessSpec(cloud="aws", region=ENVIRONMENT),
+)
+```
+
+> **마이그레이션 주의**: Pinecone는 메트릭 in-place 변경을 지원하지 않습니다.
+> 기존 `cosine` 인덱스는 콘솔/API에서 한 번 삭제 후 위 스크립트로 재생성해야 함.
+
+### 7-8. BM25 학습 스크립트 (`scripts/train_bm25.py`)
+
+```python
+from pinecone_text.sparse import BM25Encoder
+from src.pipeline.loader import load_pdfs
+from src.pipeline.chunker import chunk_documents
+
+documents = load_pdfs("data/raw")
+chunks = chunk_documents(documents)
+corpus = [c.page_content for c in chunks]
+
+encoder = BM25Encoder()
+encoder.fit(corpus)
+encoder.dump(os.getenv("BM25_PATH", "output/bm25_encoder.pkl"))
+```
+
+전체 코퍼스로 IDF 통계를 학습 → pickle로 저장. indexer/retriever 양쪽이 동일한 pkl을 로드해야
+sparse 벡터 공간이 일치한다. 코퍼스 변경(새 PDF 추가 등) 시 BM25 재학습 + 전체 재업로드 필요.
+
+### 7-9. 인덱서 변경 (`src/pipeline/indexer.py`)
+
+`langchain-pinecone`의 `PineconeVectorStore`를 떼어내고 raw `pinecone-client`로 dense + sparse를
+동시에 upsert. 핵심:
+
+```python
+dense_vecs  = dense_embedder.embed_documents(texts)
+sparse_vecs = sparse_encoder.encode_documents(texts)
+
+vectors = [{
+    "id": chunk_id(doc),
+    "values": dense_vecs[i],
+    "sparse_values": sparse_vecs[i],   # {"indices": [...], "values": [...]}
+    "metadata": {"text": doc.page_content, **doc.metadata},
+} for i, doc in enumerate(batch)]
+
+index.upsert(vectors=vectors)
+```
+
+`chunk_id`는 콘텐츠 SHA-256 해시 → 동일 청크 재업로드 시 자동 upsert(중복 방지).
+
+### 7-10. 검색기 변경 (`src/rag/retriever.py`)
+
+```python
+def hybrid_scale(dense, sparse, alpha):
+    scaled_dense  = [v * alpha for v in dense]
+    scaled_sparse = {
+        "indices": sparse["indices"],
+        "values":  [v * (1 - alpha) for v in sparse["values"]],
+    }
+    return scaled_dense, scaled_sparse
+
+
+def retrieve(query, top_k=None):
+    alpha = float(os.getenv("HYBRID_ALPHA", 0.7))
+    dense_vec  = dense_embedder.embed_query(query)
+    sparse_vec = sparse_encoder.encode_queries(query)
+    sd, ss = hybrid_scale(dense_vec, sparse_vec, alpha)
+
+    response = index.query(
+        vector=sd, sparse_vector=ss,
+        top_k=top_k, include_metadata=True,
+    )
+    # response.matches → List[Document, score]
+```
+
+### 7-11. 마이그레이션 절차 (Phase 1 → Phase 2)
+
+```bash
+# 1. 신규 의존성 설치
+pip install -r requirements.txt
+
+# 2. 기존 cosine 인덱스 삭제 (Pinecone 콘솔 또는 API)
+#    → 메트릭 변경 위해 필수
+
+# 3. dotproduct 인덱스 재생성
+python scripts/create_index.py
+
+# 4. BM25 인코더 학습 (코퍼스 fit)
+python scripts/train_bm25.py
+
+# 5. 전체 재업로드 (dense + sparse)
+python scripts/run_pipeline.py
+
+# 6. 환경변수 확인 (HYBRID_ALPHA)
+#    .env에 HYBRID_ALPHA=0.7 (또는 튜닝값) 설정
+
+# 7. 서버 재시작
+uvicorn src.api.main:app --reload
+```
+
+### 7-12. 평가 계획
+
+`HYBRID_ALPHA` 0.0 / 0.3 / 0.5 / 0.7 / 1.0에서 RAGAS + Manual Eval 측정 후 비교.
+
+| α | 모드 | 가설 |
+|---|---|---|
+| 1.0 | Dense only | Phase 1 baseline |
+| 0.7 | Dense 위주 (기본값) | 일반 도메인 질의 강세 |
+| 0.5 | 균형 | 약어·고유명사 비율 높을 때 |
+| 0.3 | Sparse 위주 | 정확 매치가 결정적인 경우 |
+| 0.0 | BM25 only | sparse-only baseline |
+
+핵심 측정 지표: Context Precision / Recall (검색 품질 직접 영향).
+α 튜닝 결과는 `ragas_evaluation_report.md`에 컬럼 추가 형태로 기록.

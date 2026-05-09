@@ -6,9 +6,10 @@ AI 관련 PDF 문서를 벡터 DB에 인덱싱하고, 자연어 질문에 한국
 
 | 레이어 | 기술 |
 |--------|------|
-| Vector DB | Pinecone (Serverless, AWS `us-east-1`) |
-| 임베딩 | Google `gemini-embedding-001` (3072 dim, cosine) |
-| 검색 | Dense similarity search (top-k) |
+| Vector DB | Pinecone (Serverless, AWS `us-east-1`, `dotproduct`) |
+| 임베딩 | Google `gemini-embedding-001` (3072 dim) |
+| Sparse | BM25 (`pinecone-text` BM25Encoder, 코퍼스 fit) |
+| 검색 | Hybrid Search (dense + sparse, α 가중 결합) |
 | LLM | Google Gemini `gemini-3-flash-preview` |
 | Backend | Python 3.11+ · FastAPI · uvicorn · LangChain |
 | Frontend | Vanilla HTML/CSS/JavaScript |
@@ -23,13 +24,16 @@ pip install -r requirements.txt
 # 2. 환경변수 설정
 cp .env.example .env  # GOOGLE_API_KEY, PINECONE_API_KEY, ANTHROPIC_API_KEY 입력
 
-# 3. Pinecone 인덱스 생성
+# 3. Pinecone 인덱스 생성 (metric=dotproduct)
 python scripts/create_index.py
 
-# 4. 데이터 파이프라인 실행 (PDF → 임베딩 → 업로드)
+# 4. BM25 sparse encoder 학습 (코퍼스 fit)
+python scripts/train_bm25.py
+
+# 5. 데이터 파이프라인 실행 (PDF → dense+sparse 임베딩 → 업로드)
 python scripts/run_pipeline.py
 
-# 5. 서버 실행
+# 6. 서버 실행
 uvicorn src.api.main:app --reload
 # -> http://localhost:8000
 ```
@@ -37,8 +41,9 @@ uvicorn src.api.main:app --reload
 ## 데이터 파이프라인
 
 ```bash
-python scripts/create_index.py     # Pinecone 인덱스 생성
-python scripts/run_pipeline.py     # PDF 로딩 → 청킹 → 임베딩 → 업로드
+python scripts/create_index.py     # Pinecone 인덱스 생성 (dotproduct)
+python scripts/train_bm25.py       # BM25 sparse encoder 학습 → output/bm25_encoder.pkl
+python scripts/run_pipeline.py     # PDF 로딩 → 청킹 → dense+sparse 임베딩 → 업로드
 python scripts/resume_pipeline.py  # 중단된 업로드 재개
 ```
 
@@ -51,6 +56,18 @@ python scripts/resume_pipeline.py  # 중단된 업로드 재개
 ```bash
 python scripts/clear_index.py      # 인덱스 내 모든 벡터 삭제 (인덱스는 유지)
 ```
+
+### 하이브리드 검색
+
+| 항목 | 값 |
+|---|---|
+| Dense 임베딩 | `gemini-embedding-001` (3072d) |
+| Sparse 인코더 | `pinecone-text` BM25Encoder (코퍼스 fit) |
+| Pinecone 인덱스 | `dotproduct` 메트릭 (sparse 지원 필수) |
+| 가중치 (`HYBRID_ALPHA`) | 기본 `0.7` (dense 70% + sparse 30%) |
+
+쿼리 시 dense 벡터엔 `α`, sparse 벡터엔 `(1−α)`를 곱한 뒤 단일 hybrid query를 Pinecone에 보냅니다.
+`HYBRID_ALPHA=1.0`이면 dense-only로 폴백, `0.0`이면 BM25-only.
 
 ## 디렉토리 구조
 
@@ -87,7 +104,8 @@ RAGproject/
 │       ├── ragas_eval.py       # RAGAS 평가
 │       └── manual_eval.py      # LLM-as-Judge 수동 평가
 ├── scripts/
-│   ├── create_index.py
+│   ├── create_index.py         # 인덱스 생성 (dotproduct)
+│   ├── train_bm25.py           # BM25 sparse encoder 학습
 │   ├── run_pipeline.py
 │   ├── resume_pipeline.py
 │   └── clear_index.py          # 인덱스 벡터 전체 삭제 (인덱스는 유지)
@@ -101,7 +119,16 @@ RAGproject/
 
 | 인덱스 | 용도 | 차원 | 메트릭 |
 |--------|------|------|--------|
-| `ai-search-index` | Dense 검색 (Gemini embedding) | 3072 | cosine |
+| `ai-search-index` | Hybrid 검색 (Gemini dense + BM25 sparse) | 3072 | dotproduct |
+
+> 기존 `cosine` 인덱스를 운용 중이라면 메트릭 변경을 위해 인덱스를 한 번 삭제 후 재생성해야 합니다 (Pinecone는 메트릭 in-place 변경 미지원).
+>
+> ```bash
+> # Pinecone 콘솔 또는 API에서 ai-search-index 삭제 후
+> python scripts/create_index.py
+> python scripts/train_bm25.py
+> python scripts/run_pipeline.py
+> ```
 
 ## API 엔드포인트
 

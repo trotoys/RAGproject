@@ -6,6 +6,7 @@ langchain-community==0.3.13
 
 # Vector DB
 pinecone-client==4.1.2
+pinecone-text==0.9.0    # BM25 sparse encoder (하이브리드 검색)
 
 # LLM / Embedding
 google-generativeai==0.8.3

@@ -2,21 +2,40 @@
 
 ## 구현 목표
 Pinecone + Gemini API + LangChain + FastAPI + Vanilla JS로 PDF 문서 기반 AI 용어/트렌드 검색 서비스 구현.
-웹 브라우저에서 질문을 입력하면 관련 내용을 찾아 한국어로 답변. RAGAS로 검색 품질 평가.
+웹 브라우저에서 질문을 입력하면 관련 내용을 찾아 한국어로 답변. 4지표(Faithfulness/Answer Relevancy/Context Precision/Context Recall)로 검색 품질 평가.
 
 ## 진행 단계
 - **Phase 1 — Dense MVP** (완료): cosine + Gemini Embedding 단일 검색
-- **Phase 2 — Hybrid Search** (현재): dotproduct 인덱스 + BM25 sparse 결합 (§7 참조)
+- **Phase 2 — Hybrid Search** (완료): dotproduct 인덱스 + BM25 sparse 결합 (§7 참조)
+
+## 최종 평가 결과 (2026-05-09)
+
+| 지표 | 평균 | 목표 | 판정 |
+|------|------|------|------|
+| Faithfulness | 0.94 | 0.80 | ✅ PASS |
+| Answer Relevancy | 0.91 | 0.80 | ✅ PASS |
+| Context Precision | 0.82 | 0.70 | ✅ PASS |
+| Context Recall | 0.82 | 0.70 | ✅ PASS |
+| **종합 평균** | **0.87** | — | **4/4 PASS** |
+
+상세 결과는 `ragas_evaluation_report.md` 및 `rag_eval_agent_report.md` 참조.
 
 ---
 
 ## 1. 개요 / 기술 스택 / 디렉토리
 
-### 시스템 아키텍처
+### 시스템 아키텍처 (현재 — Hybrid)
 ```
-PDF 문서 → [Loader] → [Chunker] → [Gemini Embedding] → [Pinecone Index]
-                                                               ↑
-사용자 질문 → [Gemini Embedding] → [Pinecone 검색] → [Context 조합] → [Gemini LLM] → 한국어 답변
+[Indexing]
+PDF → Loader → Chunker(1100/150) → ┬─ Gemini Embedding (3072-dim dense) ─┐
+                                   ├─ BM25 Encoder (sparse) ──────────────┼→ Pinecone (dotproduct)
+                                   └─ SHA-256 Hash ID ────────────────────┘
+
+[Query]
+질문 → Gemini Embedding (dense) ┐
+     → BM25 Encoder (sparse) ─┴→ α·dense + (1-α)·sparse → Pinecone Hybrid Query
+                                                                ↓
+                                                       top_k chunks → Context → Gemini LLM → 답변
 ```
 
 ### 기술 스택
@@ -80,20 +99,21 @@ mkdir -p data/pdfs src/pipeline src/rag src/api src/eval scripts frontend
 touch src/pipeline/__init__.py src/rag/__init__.py src/api/__init__.py src/eval/__init__.py
 ```
 
-### 2-2. requirements.txt
+### 2-2. requirements.txt (Phase 2 — Hybrid 반영)
 
 ```
 # Core
-langchain==0.2.16
-langchain-google-genai==1.0.10
-langchain-pinecone==0.1.3
-langchain-community==0.2.16
+langchain==0.3.13
+langchain-google-genai==2.0.8
+langchain-pinecone==0.2.13
+langchain-community==0.3.13
 
 # Vector DB
 pinecone-client==4.1.2
+pinecone-text==0.9.0    # BM25 sparse encoder
 
 # LLM / Embedding
-google-generativeai==0.7.2
+google-generativeai==0.8.3
 
 # Backend
 fastapi==0.115.0

@@ -16,7 +16,7 @@ from pinecone_text.sparse import BM25Encoder
 load_dotenv()
 
 BATCH_SIZE = 50
-BATCH_SLEEP = 65   # 배치 간 대기 (무료 플랜 100req/min 한도 대응)
+BATCH_SLEEP = 2    # Tier 1 (1500 RPM 한도) — 안전 마진
 MAX_RETRIES = 3
 BM25_PATH = os.getenv("BM25_PATH", "output/bm25_encoder.pkl")
 

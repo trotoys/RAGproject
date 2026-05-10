@@ -1,0 +1,100 @@
+=== 데이터 파이프라인 시작 ===
+
+[1/3] PDF 로딩
+  로딩 중: a-practical-guide-to-building-agents.pdf
+    → 34페이지
+  로딩 중: ai_report_2025.pdf
+    → 26페이지
+  로딩 중: google_cloud_ai_agent_trends_2026_report.pdf
+    → 49페이지
+  로딩 중: google_cloud_future_of_ai_perspectives_for_startups_2025.pdf
+    → 75페이지
+  로딩 중: startup_technical_guide_ai_agents_final.pdf
+    → 64페이지
+  로딩 중: 구글_Agent.pdf
+    → 42페이지
+  로딩 중: ★2025_AI_동향과_이슈로_살펴보는_AI_시대에_꼭_알아야_할_핵심용어.pdf
+    → 168페이지
+
+총 458페이지 로딩 완료
+
+[2/3] 텍스트 청킹
+총 870개 청크 생성 (size=1100, overlap=150)
+
+[3/3] Pinecone 업로드
+Pinecone 하이브리드 업로드 시작 (870개 청크, batch=50)
+  [50/870] 업로드 중...
+    Rate limit 방지: 65초 대기...
+  [100/870] 업로드 중...
+    Rate limit 방지: 65초 대기...
+  [150/870] 업로드 중...
+    Rate limit 방지: 65초 대기...
+  [200/870] 업로드 중...
+Traceback (most recent call last):
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/google/api_core/grpc_helpers.py", line 55, in error_remapped_callable
+    return callable_(*args, **kwargs)
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/grpc/_channel.py", line 1159, in __call__
+    return _end_unary_response_blocking(state, call, False, None)
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/grpc/_channel.py", line 990, in _end_unary_response_blocking
+    raise _InactiveRpcError(state)  # pytype: disable=not-instantiable
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+grpc._channel._InactiveRpcError: <_InactiveRpcError of RPC that terminated with:
+	status = StatusCode.DEADLINE_EXCEEDED
+	details = "Deadline Exceeded"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_status:4, grpc_message:"Deadline Exceeded"}"
+>
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/langchain_google_genai/embeddings.py", line 227, in embed_documents
+    result = self.client.batch_embed_contents(
+        BatchEmbedContentsRequest(requests=requests, model=self.model)
+    )
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 1379, in batch_embed_contents
+    response = rpc(
+        request,
+    ...<2 lines>...
+        metadata=metadata,
+    )
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/google/api_core/gapic_v1/method.py", line 128, in __call__
+    return wrapped_func(*args, **kwargs)
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+        target,
+    ...<3 lines>...
+        on_error=on_error,
+    )
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/google/api_core/retry/retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+        exc,
+    ...<6 lines>...
+        timeout,
+    )
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/google/api_core/retry/retry_base.py", line 216, in _retry_error_helper
+    raise final_exc from source_exc
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/google/api_core/grpc_helpers.py", line 57, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.DeadlineExceeded: 504 Deadline Exceeded
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/malee/Claude/Output/RAGproject/scripts/run_pipeline.py", line 29, in <module>
+    main()
+    ~~~~^^
+  File "/Users/malee/Claude/Output/RAGproject/scripts/run_pipeline.py", line 23, in main
+    upload_to_pinecone(chunks)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/Users/malee/Claude/Output/RAGproject/src/pipeline/indexer.py", line 105, in upload_to_pinecone
+    _upload_batch(index, batch, dense_embedder, sparse_encoder)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/malee/Claude/Output/RAGproject/src/pipeline/indexer.py", line 70, in _upload_batch
+    dense_vecs = dense_embedder.embed_documents(texts)
+  File "/Users/malee/Claude/Output/RAGproject/venv/lib/python3.13/site-packages/langchain_google_genai/embeddings.py", line 231, in embed_documents
+    raise GoogleGenerativeAIError(f"Error embedding content: {e}") from e
+langchain_google_genai._common.GoogleGenerativeAIError: Error embedding content: 504 Deadline Exceeded

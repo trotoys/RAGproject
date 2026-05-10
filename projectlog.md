@@ -403,22 +403,121 @@ https://github.com/trotoys/RAGproject 에 푸쉬해 줘
 
 ---
 
-## Phase 진행 현황
+---
+
+### [2026-05-09] 폴더 구조 정리
+
+**프롬프트 18**
+```
+_md 폴더 내의 파일을 한 depth 위의 상위 폴더로 이동하고, _md 폴더 삭제 해 줘
+```
+
+**작업 내역**
+- 모든 MD/PNG 파일을 RAGproject 루트로 이동
+- `_md/` 폴더 삭제
+- 내부 경로 참조 갱신 (projectlog/SKILL/eval_agent_report 내 `_md/` → 루트)
+- GitHub push
+
+---
+
+### [2026-05-09] 하이브리드 검색 도입 (Phase 2)
+
+**프롬프트 19**
+```
+중복되는거 없이 깔끔하게 해 줘
+```
+
+**작업 내역 — 시스템 대규모 개선**
+1. **결정론적 ID 도입**: SHA-256(source_file|page|content) → 재실행 시 자동 upsert, 중복 방지
+2. **하이브리드 검색 인프라**:
+   - `pinecone-text==0.9.0` 패키지 추가
+   - Pinecone metric: cosine → **dotproduct** (하이브리드 필수 조건)
+   - `scripts/create_index.py` 강화: 기존 metric 검사 후 자동 재생성
+   - `src/pipeline/indexer.py` 전면 재작성: dense + sparse 동시 upsert
+   - `src/rag/retriever.py` 전면 재작성: hybrid_scale 가중 결합 (alpha=0.7)
+   - `scripts/train_bm25.py` 신규: 코퍼스 학습 + `output/bm25_encoder.pkl` 직렬화
+3. **청킹 조정**: chunk_size 800 → 1100, overlap 100 → 150 → 1066 → **870 청크** (일일 한도 1000 안에 fit)
+4. **인덱스 정리 도구**: `scripts/clear_index.py` 신규 (인덱스 비우기)
+
+---
+
+### [2026-05-09] Tier 1 전환
+
+**프롬프트 20**
+```
+지금 티어1이야
+```
+
+**작업 내역**
+- `BATCH_SLEEP` 65s → **2s** (분당 한도가 5 → 1500으로 해제됨)
+- 인덱싱 시간 ~20분 → **~2분**으로 단축
+- 일일 한도 사실상 무제한 → 평가 표본 N=3 모두 정상 수행 가능
+
+---
+
+### [2026-05-09] 깨끗한 재인덱싱
+
+**프롬프트 21**
+```
+기존 올라간거 삭제하고 다시 진행하고 싶은데 어때? / AI 용어검색 마무리 하려고 해
+```
+
+**작업 내역**
+- Pinecone 콘솔에서 namespace 삭제 (사용자 직접)
+- `python scripts/create_index.py` (dotproduct 인덱스 확인)
+- `python scripts/train_bm25.py` (870 청크 코퍼스 학습)
+- `python scripts/run_pipeline.py` (사용자 직접 실행) → **870 record 모두 업로드 완료**
+
+---
+
+### [2026-05-09] 최종 평가 (Hybrid + N=3)
+
+**프롬프트 22**
+```
+성능평가 및 계획서, 아키텍쳐 등 모든 문서를 현재 설정 상태에 맞춰 업데이트 하고 git push 해줘
+```
+
+**작업 내역**
+- `python src/eval/collect_eval_data.py` → 3/3 모두 성공 (Tier 1 한도 해제 효과)
+- Claude as Judge로 4지표 채점:
+
+| 지표 | 평균 | 목표 | 판정 |
+|------|------|------|------|
+| Faithfulness | 0.94 | 0.80 | ✅ PASS |
+| Answer Relevancy | 0.91 | 0.80 | ✅ PASS |
+| Context Precision | 0.82 | 0.70 | ✅ PASS |
+| Context Recall | 0.82 | 0.70 | ✅ PASS |
+| **종합 평균** | **0.87** | — | **4/4 PASS** |
+
+- **이전 대비**: Context Recall 0.60 (FAIL) → 0.82 (PASS) [+0.22]. 하이브리드 검색의 핵심 효과
+- 산출물 일괄 갱신:
+  - `output/eval_result.json` (N=3, 하이브리드 결과)
+  - `ragas_evaluation_report.md` (전면 갱신)
+  - `rag_eval_agent_report.md` (전면 갱신)
+  - `ARCHITECTURE.md` (Hybrid 다이어그램으로 전면 갱신)
+  - `rag_project_plan.md` (Phase 2 결과·requirements·아키텍처 반영)
+  - `projectlog.md` (본 항목까지 누적)
+- GitHub push
+
+---
+
+## Phase 진행 현황 (최종)
 
 | Phase | 내용 | 상태 |
 |-------|------|------|
 | Phase 0 | 폴더 구조·계획서·로그 | ✅ 완료 |
-| Phase 1 | 환경 설정·Pinecone 인덱스 | ✅ 완료 |
-| Phase 2 | 데이터 파이프라인 | ⚠ 부분 (950/1066 업로드, 한도 리셋 후 116개 추가 예정) |
-| Phase 3 | RAG 검색 | ✅ 완료 |
+| Phase 1 | 환경 설정·Pinecone 인덱스 | ✅ 완료 (dotproduct로 재생성) |
+| Phase 2 | 데이터 파이프라인 (Hybrid) | ✅ 완료 (870/870 업로드, 결정론적 ID) |
+| Phase 3 | RAG 검색 (Hybrid: dense + BM25) | ✅ 완료 |
 | Phase 4 | API + 웹 UI | ✅ 완료 (Cooldown UI 포함) |
-| Phase 5 | 품질 검증 | ⚠ 부분 (Q3 정상, Q1·Q2 한도로 미평가) |
+| Phase 5 | 품질 검증 | ✅ 완료 (4/4 PASS, 종합 0.87) |
 
 ---
 
 ## 다음 작업 후보
 
-- 일일 한도 리셋 후 Q1·Q2 재평가 + 인덱싱 116개 추가 (`resume_pipeline.py`)
-- `top_k=8`, `chunk_size=1000` 등 Recall 개선 실험
-- 테스트셋 N ≥ 10 확장
-- Anthropic API 결제 후 `manual_eval.py`(Claude judge) 자동화
+- 테스트셋 N ≥ 10 확장 (현재 N=3)
+- alpha 0.5/0.7/0.9 비교 실험
+- top_k 5/8/10 비교 실험
+- 코퍼스 가용 정보 기준으로 GT 재정의 (Q3 Recall 향상)
+- (선택) Anthropic API 결제 후 `manual_eval.py` (Claude judge) 자동화로 회귀 평가 인프라 구축

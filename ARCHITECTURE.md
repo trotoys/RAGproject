@@ -1,6 +1,7 @@
 # 시스템 아키텍처 — RAG AI 용어 & 트렌드 검색
 
 > 본 문서는 본 프로젝트의 데이터 흐름·구성 요소·외부 의존성을 시각화합니다. 다이어그램은 모두 Mermaid로 작성되었습니다.
+> **현재 검색 방식: 하이브리드 (Dense + BM25 Sparse)**
 
 ---
 
@@ -13,38 +14,41 @@ graph TB
     end
 
     subgraph Frontend["Frontend (Vanilla JS)"]
-        UI[index.html / app.js / style.css]
+        UI[index.html / app.js / style.css<br/>Rate-limit cooldown UI]
     end
 
     subgraph Backend["Backend (FastAPI)"]
         API[FastAPI<br/>/search · /health · /static]
-        RT[Retriever<br/>top_k=5]
-        GN[Generator<br/>LLM 답변 생성]
+        RT[Hybrid Retriever<br/>α·dense + 1-α·sparse]
+        GN[Generator<br/>gemini-3-flash-preview]
     end
 
     subgraph DataPipeline["Data Pipeline (One-time)"]
-        PDF[PDF Files<br/>data/raw/]
+        PDF[PDF Files<br/>data/raw/ — 7 files, 458 pages]
         LD[PyPDFLoader]
-        CK[RecursiveCharacterTextSplitter<br/>chunk=800, overlap=100]
-        EM1[Gemini Embedding<br/>gemini-embedding-001<br/>3072-dim]
+        CK[RecursiveCharacterTextSplitter<br/>chunk=1100, overlap=150 → 870 chunks]
+        DE[Dense Embedding<br/>gemini-embedding-001<br/>3072-dim]
+        SE[Sparse Encoder<br/>BM25Encoder]
+        ID[Deterministic ID<br/>SHA-256 hash]
     end
 
     subgraph External["외부 서비스"]
-        PC[(Pinecone<br/>ai-search-index<br/>cosine, AWS us-east-1)]
-        GE[(Gemini API<br/>Embedding + LLM)]
+        PC[(Pinecone<br/>ai-search-index<br/>dotproduct, AWS us-east-1)]
+        GE[(Gemini API · Tier 1<br/>Embedding + LLM)]
     end
 
     subgraph Eval["Evaluation"]
         TS[Test Set<br/>3 Q&A pairs]
-        EV[Manual Eval<br/>LLM-as-Judge]
-        RP[Eval Report]
+        EV[Manual Eval<br/>Claude as Judge]
+        RP[Eval Report<br/>4/4 PASS · 0.87]
     end
 
     U --> UI
     UI -->|POST /search| API
     API --> RT
     RT -->|query embedding| GE
-    RT -->|similarity search| PC
+    RT -->|BM25 query encode| SE
+    RT -->|hybrid query| PC
     PC -->|top_k chunks| RT
     RT --> GN
     GN -->|prompt + context| GE
@@ -54,9 +58,13 @@ graph TB
 
     PDF --> LD
     LD --> CK
-    CK --> EM1
-    EM1 --> GE
+    CK --> DE
+    CK --> SE
+    CK --> ID
+    DE --> GE
     GE -->|3072-dim vectors| PC
+    SE -->|sparse vectors| PC
+    ID --> PC
 
     TS --> EV
     EV -->|동일 RAG 경로 호출| API
@@ -69,13 +77,13 @@ graph TB
 
     class PC,GE external
     class API,RT,GN backend
-    class PDF,LD,CK,EM1 pipeline
+    class PDF,LD,CK,DE,SE,ID pipeline
     class TS,EV,RP eval
 ```
 
 ---
 
-## 2. 데이터 인덱싱 흐름 (Phase 2)
+## 2. 데이터 인덱싱 흐름 (Phase 2 — Hybrid)
 
 ```mermaid
 sequenceDiagram
@@ -83,27 +91,34 @@ sequenceDiagram
     participant Pipe as run_pipeline.py
     participant LD as PyPDFLoader
     participant CK as Chunker
-    participant EM as Gemini Embedding API
+    participant DE as Gemini Embedding
+    participant BM25 as BM25 Encoder
+    participant ID as Hash ID
     participant PC as Pinecone
 
+    Note over Pipe,PC: 사전 작업: train_bm25.py로 BM25 인코더 학습
     Pipe->>LD: data/raw/*.pdf 로딩
-    LD-->>Pipe: 458 페이지 (Document 리스트)
-    Pipe->>CK: chunk_documents()
-    CK-->>Pipe: 1066 청크<br/>(size=800, overlap=100)
+    LD-->>Pipe: 458 페이지
+    Pipe->>CK: chunk_documents()<br/>chunk_size=1100, overlap=150
+    CK-->>Pipe: 870 청크
 
-    loop batch_size=50, sleep 65s 사이
-        Pipe->>EM: embed_documents(batch)
-        EM-->>Pipe: 3072-dim 벡터 50개
-        Pipe->>PC: add_documents(batch)
+    loop batch_size=50, sleep 2s 사이 (Tier 1)
+        Pipe->>DE: embed_documents(batch)
+        DE-->>Pipe: 3072-dim dense 벡터 50개
+        Pipe->>BM25: encode_documents(batch)
+        BM25-->>Pipe: sparse 벡터 50개
+        Pipe->>ID: chunk_id() — SHA-256(source|page|content)
+        ID-->>Pipe: 결정론적 ID 50개
+        Pipe->>PC: upsert(id, dense, sparse, metadata)
         PC-->>Pipe: OK
     end
 
-    Note over Pipe,PC: 일일 한도(1000) 도달 시 다음 날 재개<br/>(resume_pipeline.py with START_INDEX)
+    Note over Pipe,PC: 같은 청크 → 같은 ID → 자동 upsert<br/>중복 없음, 재실행 안전
 ```
 
 ---
 
-## 3. 검색 + 답변 생성 흐름 (Query Path)
+## 3. 검색 + 답변 생성 흐름 (Hybrid Query Path)
 
 ```mermaid
 sequenceDiagram
@@ -111,39 +126,43 @@ sequenceDiagram
     participant U as 사용자
     participant UI as Web UI
     participant API as FastAPI
-    participant RT as Retriever
-    participant EM as Gemini Embedding
+    participant RT as Hybrid Retriever
+    participant DE as Gemini Embedding
+    participant BM25 as BM25 Encoder
     participant PC as Pinecone
     participant GN as Generator
-    participant LLM as Gemini LLM<br/>(gemini-3-flash-preview)
+    participant LLM as Gemini LLM
 
     U->>UI: 질문 입력
     UI->>API: POST /search {query, top_k}
     API->>RT: retrieve_documents(query)
-    RT->>EM: embed_query(query)
-    EM-->>RT: 3072-dim 벡터
-    RT->>PC: similarity_search(vector, k=5)
+    RT->>DE: embed_query(query)
+    DE-->>RT: dense 벡터
+    RT->>BM25: encode_queries(query)
+    BM25-->>RT: sparse 벡터
+    RT->>RT: hybrid_scale(dense·α, sparse·(1-α))<br/>α=0.7
+    RT->>PC: query(vector=scaled_dense,<br/>sparse_vector=scaled_sparse, top_k=5)
     PC-->>RT: top-5 chunks + scores
     RT->>GN: chunks
     GN->>LLM: prompt(template + context + question)
     LLM-->>GN: 한국어 답변
     GN-->>API: {answer, sources, context}
-    API-->>UI: SearchResponse {answer, sources, elapsed_ms}
-    UI-->>U: 답변 + 출처 + 응답시간 렌더링
+    API-->>UI: SearchResponse
+    UI-->>U: 답변 + 출처 + 응답시간
 ```
 
 ---
 
-## 4. 평가(LLM-as-Judge) 흐름 (Phase 5)
+## 4. 평가(LLM-as-Judge) 흐름
 
 ```mermaid
 flowchart LR
-    TS[Test Set<br/>question + ground_truth] --> RAG[RAG Pipeline<br/>retrieve + generate]
-    RAG --> DATA[Eval Data<br/>question / contexts / answer / GT]
-    DATA --> JUDGE[LLM-as-Judge<br/>Claude / Gemini]
-    JUDGE --> SCORE[4 Metrics<br/>F / AR / CP / CR]
-    SCORE --> AGG[집계: 평균 · 종합]
-    AGG --> RPT[Evaluation Report<br/>ragas_evaluation_report.md]
+    TS[Test Set N=3<br/>question + ground_truth] --> RAG[Hybrid RAG<br/>retrieve + generate]
+    RAG --> DATA[output/eval_data.json<br/>question·contexts·answer·GT]
+    DATA --> JUDGE[Claude as Judge<br/>Claude Code 대화창]
+    JUDGE --> SCORE[4 Metrics<br/>F=0.94 · AR=0.91 · CP=0.82 · CR=0.82]
+    SCORE --> AGG[종합 평균 0.87 · 4/4 PASS]
+    AGG --> RPT[Reports<br/>ragas_evaluation_report.md<br/>rag_eval_agent_report.md]
 
     classDef data fill:#fff7e6,stroke:#d48806
     classDef proc fill:#e6f7ff,stroke:#1890ff
@@ -161,47 +180,63 @@ flowchart LR
 | 컴포넌트 | 파일 | 책임 |
 |----------|------|------|
 | PDF Loader | `src/pipeline/loader.py` | `data/raw/` 내 PDF 로딩, 페이지 단위 Document 변환 |
-| Chunker | `src/pipeline/chunker.py` | 청크 분할 (size=800, overlap=100, 한국어 분리자 포함) |
-| Indexer | `src/pipeline/indexer.py` | Pinecone 업로드, 배치/Rate Limit 재시도 |
-| Index 생성 | `scripts/create_index.py` | 인덱스 초기화 (3072-dim, cosine, AWS us-east-1) |
-| Retriever | `src/rag/retriever.py` | 쿼리 임베딩 → similarity search |
+| Chunker | `src/pipeline/chunker.py` | 청크 분할 (size=1100, overlap=150, 한국어 분리자 포함) |
+| **Hybrid Indexer** | `src/pipeline/indexer.py` | Dense 임베딩 + BM25 sparse + 결정론적 해시 ID + Pinecone upsert |
+| BM25 Trainer | `scripts/train_bm25.py` | 전체 코퍼스에서 IDF 통계 학습, `output/bm25_encoder.pkl` 저장 |
+| Index 생성 | `scripts/create_index.py` | dotproduct 인덱스 자동 생성/재생성 (cosine 발견 시 삭제 후 dotproduct로) |
+| Index 정리 | `scripts/clear_index.py` | 인덱스 내 모든 벡터 삭제 (인덱스는 유지) |
+| **Hybrid Retriever** | `src/rag/retriever.py` | dense·α + sparse·(1-α) 가중 결합 후 Pinecone 쿼리 |
 | Generator | `src/rag/generator.py` | 프롬프트 구성 + Gemini LLM 호출 + 결과 가공 |
-| API | `src/api/main.py`, `src/api/schemas.py` | FastAPI: `/search`, `/health`, `/`, `/static` |
-| Frontend | `frontend/index.html` 외 | 검색 UI, fetch POST, 답변·출처·응답시간 표시 |
-| Eval (Manual) | `src/eval/manual_eval.py` | Gemini judge용 평가 (분당 5회 한도 대응) |
-| Eval (Collect) | `src/eval/collect_eval_data.py` | 데이터만 수집해 JSON 저장, 채점은 외부 |
-| Eval (Claude) | Claude Code 대화창 | LLM-as-Judge 채점 (Anthropic API 미사용) |
+| API | `src/api/main.py`, `schemas.py` | FastAPI: `/search`, `/health`, `/`, `/static`. 429 응답 시 retry_seconds 반환 |
+| Frontend | `frontend/index.html` 외 | 검색 UI + Cooldown 카운트다운 (rate-limit 시) |
+| Eval (Collect) | `src/eval/collect_eval_data.py` | 데이터만 수집해 JSON 저장 |
+| Eval (Manual) | `src/eval/manual_eval.py` | Gemini judge 또는 Claude judge로 4지표 채점 |
 
 ---
 
-## 6. 외부 의존성
+## 6. 외부 의존성 (Tier 1)
 
-| 서비스 | 용도 | 한도(Free Tier) | 비고 |
-|--------|------|----------------|------|
-| Gemini Embedding (`gemini-embedding-001`) | 청크/쿼리 임베딩 | 1000 req/day | 일일 한도가 인덱싱 시 병목 |
-| Gemini LLM (`gemini-3-flash-preview`) | 답변 생성 | 분당 한도 별도 | 본 답변 모델 |
-| Gemini LLM (`gemini-2.5-flash`) | RAGAS judge (호환 이슈로 사용) | 5 req/min | RAGAS 0.2 + langchain-google-genai 2.x 호환 이슈로 NaN |
-| Pinecone Serverless | Vector DB | 2GB Storage / 1M RUs / 2M WUs | 본 프로젝트 사용량 무료 한도 내 |
+| 서비스 | 용도 | 한도(Tier 1) | 비고 |
+|--------|------|-------------|------|
+| Gemini Embedding (`gemini-embedding-001`) | 청크/쿼리 임베딩 | ~1500 RPM, 일일 사실상 무제한 | $0.000025/1K chars |
+| Gemini LLM (`gemini-3-flash-preview`) | 답변 생성 | ~1000 RPM | preview 모델 |
+| Pinecone Serverless | Vector DB (dotproduct, hybrid) | Free tier 사용량 내 | 2GB Storage / 1M RU / 2M WU |
 
 ---
 
-## 7. 알려진 제약사항
+## 7. 핵심 설계 결정사항
 
 ```mermaid
 mindmap
-  root((제약))
-    무료 한도
-      임베딩 1000/일
-      LLM 분당 5회
-      복구: PT 자정 리셋
-    호환성
-      RAGAS 0.2 + langchain-google-genai 2.x
-      → temperature kwarg 충돌
-      대안: 수동 평가 / Claude 채점
-    인덱싱
-      1066 청크 > 1000 한도
-      대안: chunk 축소 / 유료 전환 / 다일 분할
-    모델
-      gemini-3-flash-preview
-      preview라 SDK 호환 일부 부족
+  root((설계 결정))
+    하이브리드 검색
+      Dense Gemini Embedding
+      Sparse BM25
+      alpha=0.7 dense 위주
+      Recall +0.22 효과
+    결정론적 ID
+      SHA-256 source page content
+      재실행 시 자동 upsert
+      중복 방지
+    인덱스 metric
+      dotproduct 필수
+      cosine 발견 시 자동 재생성
+    청킹 전략
+      size=1100, overlap=150
+      870 청크 일일 한도 안 fit
+    평가 인프라
+      RAGAS 호환 이슈 회피
+      Claude as Judge fallback
+      evaluate-rag skill 표준화
 ```
+
+---
+
+## 8. RAGAS 호환성 이슈 (참고)
+
+| 이슈 | 원인 | 우회 |
+|------|------|------|
+| RAGAS 0.2.6 evaluate() NaN | langchain-google-genai 2.x async path가 `temperature` kwarg를 gRPC client에 직접 전달 | LLM-as-Judge 수동 평가로 대체 |
+| Free tier 일일 한도 | Embedding 1000/day, LLM 5/min | Tier 1 전환 |
+
+자세한 내용은 `ragas_evaluation_report.md` §1-1 참조.
